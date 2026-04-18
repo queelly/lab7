@@ -19,16 +19,16 @@ public class WorkerDatabaseManager {
         String createTableSQL = """
             CREATE TABLE IF NOT EXISTS workers (
                 id INTEGER PRIMARY KEY DEFAULT nextval('workers_id_seq'),
-                name VARCHAR(255) NOT NULL,
+                name TEXT NOT NULL,
                 coordinates_x DOUBLE PRECISION NOT NULL,
                 coordinates_y INTEGER NOT NULL,
                 creation_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 salary DOUBLE PRECISION,
-                position VARCHAR(255),
-                status VARCHAR(255) NOT NULL,
+                position TEXT,
+                status TEXT NOT NULL,
                 organization_annual_turnover DOUBLE PRECISION,
                 organization_employees_count INTEGER,
-                creator_username VARCHAR(255) NOT NULL
+                creator_username TEXT NOT NULL
             )
             """;
 
