@@ -69,10 +69,10 @@ public class TCPClient {
 
     public boolean sendRequest(Request request) {
         try {
-            if (clientChannel == null || !clientChannel.isConnected()) {
-                if (!connect()) return false;
+            if (!connect()) {
+                System.out.println("Не удалось установить соединение для отправки запроса.");
+                return false;
             }
-            while (!connect()) {}
 
             byte[] data = serializer.serialize(request);
             if (data == null) return false;
@@ -93,6 +93,7 @@ public class TCPClient {
             return false;
         }
     }
+
 
     public Response receiveResponse() {
         try {

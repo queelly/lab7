@@ -9,16 +9,12 @@ import models.Status;
 
 import java.sql.*;
 import java.time.LocalDateTime;
+import java.util.ArrayDeque;
+import java.util.Collection;
+import java.util.Collections;
 
-/**
- * Класс для управления коллекцией Worker в базе данных PostgreSQL.
- * ДОБАВЛЕНО: Новый класс для работы с БД согласно заданию.
- */
 public class WorkerDatabaseManager {
 
-    /**
-     * Инициализация таблицы workers и последовательности для id.
-     */
     public static void initWorkerTable() {
         String createTableSQL = """
             CREATE TABLE IF NOT EXISTS workers (
@@ -26,7 +22,7 @@ public class WorkerDatabaseManager {
                 name VARCHAR(255) NOT NULL,
                 coordinates_x DOUBLE PRECISION NOT NULL,
                 coordinates_y INTEGER NOT NULL,
-                creation_date TIMESTAMP NOT NULL,
+                creation_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 salary DOUBLE PRECISION,
                 position VARCHAR(255),
                 status VARCHAR(255) NOT NULL,
@@ -45,7 +41,6 @@ public class WorkerDatabaseManager {
             CACHE 1
             """;
 
-        // ИЗМЕНЕНО: используем новый метод getConnection() без параметров для инициализации таблиц
         try (Connection conn = DatabaseManager.getConnection();
              Statement stmt = conn.createStatement()) {
             stmt.execute(createSequenceSQL);
@@ -55,60 +50,52 @@ public class WorkerDatabaseManager {
         }
     }
 
-    /**
-     * Добавление работника в базу данных.
-     * ДОБАВЛЕНО: Метод добавляет объект в БД и возвращает true при успехе.
-     * @param worker работник для добавления
-     * @param username имя пользователя, создавшего объект
-     * @return true если добавление успешно
-     */
     public static boolean addWorkerToDB(Worker worker, String username) {
+        initWorkerTable();
         String insertSQL = """
             INSERT INTO workers (
-                name, coordinates_x, coordinates_y, creation_date,
-                salary, position, status,
+                id, name, coordinates_x, coordinates_y,
+                creation_date, salary, position, status,
                 organization_annual_turnover, organization_employees_count,
                 creator_username
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (DEFAULT, ?, ?, ?, DEFAULT, ?, ?, ?, ?, ?, ?)
             RETURNING id
             """;
 
-        // ИЗМЕНЕНО: используем новый метод getConnection() без параметров для подключения к БД
         try (Connection conn = DatabaseManager.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(insertSQL)) {
 
             pstmt.setString(1, worker.getName());
             pstmt.setDouble(2, worker.getCoordinates().getX());
             pstmt.setInt(3, worker.getCoordinates().getY().intValue());
-            pstmt.setTimestamp(4, Timestamp.valueOf(worker.getCreationDate()));
 
             if (worker.getSalary() != null) {
-                pstmt.setDouble(5, worker.getSalary());
+                pstmt.setDouble(4, worker.getSalary());
             } else {
-                pstmt.setNull(5, Types.DOUBLE);
+                pstmt.setNull(4, Types.DOUBLE);
             }
 
             if (worker.getPosition() != null) {
-                pstmt.setString(6, worker.getPosition().name());
+                pstmt.setString(5, worker.getPosition().name());
             } else {
-                pstmt.setNull(6, Types.VARCHAR);
+                pstmt.setNull(5, Types.VARCHAR);
             }
 
-            pstmt.setString(7, worker.getStatus().name());
+            pstmt.setString(6, worker.getStatus().name());
 
             if (worker.getOrganization().getAnnualTurnover() != null) {
-                pstmt.setDouble(8, worker.getOrganization().getAnnualTurnover());
+                pstmt.setDouble(7, worker.getOrganization().getAnnualTurnover());
             } else {
-                pstmt.setNull(8, Types.DOUBLE);
+                pstmt.setNull(7, Types.DOUBLE);
             }
 
             if (worker.getOrganization().getEmployeesCount() != null) {
-                pstmt.setInt(9, worker.getOrganization().getEmployeesCount());
+                pstmt.setInt(8, worker.getOrganization().getEmployeesCount());
             } else {
-                pstmt.setNull(9, Types.INTEGER);
+                pstmt.setNull(8, Types.INTEGER);
             }
 
-            pstmt.setString(10, username);
+            pstmt.setString(9, username);
 
             ResultSet rs = pstmt.executeQuery();
             if (rs.next()) {
@@ -123,40 +110,30 @@ public class WorkerDatabaseManager {
         }
     }
 
-    /**
-     * Загрузка всех работников из базы данных в память.
-     * ДОБАВЛЕНО: Метод загружает коллекцию из БД при старте сервера.
-     * @return CollectionManager с загруженными работниками
-     */
-    public static CollectionManager loadWorkersFromDB() {
-        CollectionManager collectionManager = new CollectionManager();
+    public static Collection<Worker> loadWorkersFromDB() {
+        initWorkerTable();
+        Collection<Worker> collection = Collections.synchronizedCollection(new ArrayDeque<>());
         String selectSQL = "SELECT * FROM workers ORDER BY id";
 
-        // ИЗМЕНЕНО: используем новый метод getConnection() без параметров для подключения к БД
         try (Connection conn = DatabaseManager.getConnection();
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(selectSQL)) {
 
             while (rs.next()) {
                 Worker worker = createWorkerFromResultSet(rs);
-                collectionManager.addWithoutIdGeneration(worker);
+                collection.add(worker);
             }
         } catch (SQLException e) {
             e.printStackTrace();
         }
 
-        return collectionManager;
+        return collection;
     }
 
-    /**
-     * Удаление работника из базы данных по ID.
-     * @param id ID работника
-     * @return true если удаление успешно
-     */
     public static boolean removeWorkerFromDB(Long id) {
+        initWorkerTable();
         String deleteSQL = "DELETE FROM workers WHERE id = ?";
 
-        // ИЗМЕНЕНО: используем новый метод getConnection() без параметров для подключения к БД
         try (Connection conn = DatabaseManager.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(deleteSQL)) {
             pstmt.setLong(1, id);
@@ -168,17 +145,14 @@ public class WorkerDatabaseManager {
         }
     }
 
-    /**
-     * Очистка всей таблицы workers.
-     * @return true если очистка успешна
-     */
-    public static boolean clearWorkersTable() {
-        String deleteSQL = "DELETE FROM workers";
+    public static boolean clearWorkersTable(String username) {
+        initWorkerTable();
+        String deleteSQL = "DELETE FROM workers WHERE creator_username = ?";
 
-        // ИЗМЕНЕНО: используем новый метод getConnection() без параметров для подключения к БД
         try (Connection conn = DatabaseManager.getConnection();
-             Statement stmt = conn.createStatement()) {
-            stmt.execute(deleteSQL);
+             PreparedStatement pstmt = conn.prepareStatement(deleteSQL)) {
+            pstmt.setString(1, username);
+            pstmt.executeUpdate();
             return true;
         } catch (SQLException e) {
             e.printStackTrace();
@@ -186,17 +160,10 @@ public class WorkerDatabaseManager {
         }
     }
 
-    /**
-     * Проверка прав доступа: может ли пользователь модифицировать работника.
-     * ДОБАВЛЕНО: Метод для проверки принадлежности объекта пользователю.
-     * @param workerId ID работника
-     * @param username имя пользователя
-     * @return true если пользователь является создателем объекта
-     */
     public static boolean canUserModifyWorker(Long workerId, String username) {
+        initWorkerTable();
         String selectSQL = "SELECT creator_username FROM workers WHERE id = ?";
 
-        // ИЗМЕНЕНО: используем новый метод getConnection() без параметров для подключения к БД
         try (Connection conn = DatabaseManager.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(selectSQL)) {
             pstmt.setLong(1, workerId);
@@ -213,10 +180,8 @@ public class WorkerDatabaseManager {
         }
     }
 
-    /**
-     * Создание объекта Worker из ResultSet.
-     */
     private static Worker createWorkerFromResultSet(ResultSet rs) throws SQLException {
+        initWorkerTable();
         Long id = (long) rs.getInt("id");
         String name = rs.getString("name");
         Float x = rs.getFloat("coordinates_x");

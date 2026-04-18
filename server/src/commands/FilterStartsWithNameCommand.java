@@ -17,7 +17,6 @@ public class FilterStartsWithNameCommand implements Executable {
 
     @Override
     public Response execute(String[] args, Worker worker, String username) {
-        // ДОБАВЛЕНО: Проверка авторизации
         if (username == null || username.isEmpty()) {
             return new Response("Ошибка: Пользователь не авторизован!", false);
         }
@@ -42,7 +41,6 @@ public class FilterStartsWithNameCommand implements Executable {
         }
     }
 
-    // Переопределенный метод для обратной совместимости
     @Override
     public Response execute(String[] args, Worker worker) {
         return execute(args, worker, null);

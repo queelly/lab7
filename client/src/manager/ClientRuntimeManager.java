@@ -17,7 +17,6 @@ public class ClientRuntimeManager {
     private final PrinterManager printerManager = new PrinterManager();
     private Boolean isWorking = true;
 
-    // ДОБАВЛЕНО: поля для хранения учетных данных пользователя
     private String username;
     private String password;
 
@@ -25,14 +24,9 @@ public class ClientRuntimeManager {
         this.client = client;
     }
 
-    /**
-     * ДОБАВЛЕНО: Метод для авторизации пользователя при запуске клиента.
-     * Запрашивает логин и пароль, которые будут передаваться с каждым запросом.
-     * Также отправляет команду login на сервер для регистрации/авторизации.
-     */
     private boolean authenticate() {
         System.out.println("=== Авторизация ===");
-        while (true) {
+        while (isWorking) {
             System.out.print("Введите логин: ");
             if (!scannerManager.hasNext()) return false;
             username = scannerManager.readLine().trim();
@@ -42,8 +36,7 @@ public class ClientRuntimeManager {
             password = scannerManager.readLine().trim();
 
             if (!username.isEmpty() && !password.isEmpty()) {
-                // ИЗМЕНЕНО: Отправляем команду login на сервер для проверки/регистрации
-                Request loginRequest = createRequest("login", new String[]{password}, username, password);
+                Request loginRequest = createRequest("login", new String[]{password}, username, null);
                 if (client.sendRequest(loginRequest)) {
                     Response response = client.receiveResponse();
                     if (response != null && response.isSuccess()) {
@@ -62,10 +55,10 @@ public class ClientRuntimeManager {
                 System.out.println("Логин и пароль не могут быть пустыми. Попробуйте снова.");
             }
         }
+        return false;
     }
 
     public void run() throws InterruptedException {
-        // ДОБАВЛЕНО: Авторизация перед запуском основного цикла
         if (!authenticate()) {
             System.out.println("Не удалось пройти авторизацию. Клиент завершает работу.");
             return;
@@ -73,7 +66,7 @@ public class ClientRuntimeManager {
 
         System.out.println("Клиент запущен. Введите команду (help для справки):");
 
-        while (true) {
+        while (isWorking) {
             System.out.print("> ");
             if (!scannerManager.hasNext()) break;
 
@@ -88,12 +81,10 @@ public class ClientRuntimeManager {
                 isWorking = false;
                 break;
             } else if (commandName.equals("execute_script")) {
-                // ДОБАВЛЕНО: Передача учетных данных в ScriptManager для авторизации
                 new ScriptManager(client, isWorking, username, password).execute(args[0]);
                 continue;
             }
 
-            // ИЗМЕНЕНО: Создание запроса с передачей учетных данных пользователя
             Request request = createRequest(commandName, args, scannerManager, printerManager, username, password);
             if (request == null) continue;
 
@@ -113,6 +104,9 @@ public class ClientRuntimeManager {
                     printerManager.println(response.getMessage());
                 } else {
                     printerManager.printErr("Сервер вернул ошибку: " + response.getMessage());
+                    if (response.getMessage().contains("аутентификации")) {
+                        authenticate();
+                    }
                 }
             } else {
                 printerManager.printErr("Ошибка: Ответ от сервера не получен или соединение разорвано.");

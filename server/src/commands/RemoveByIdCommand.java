@@ -5,11 +5,6 @@ import models.Worker;
 import network.Response;
 import database.WorkerDatabaseManager;
 
-/**
- * Команда remove_by_id для удаления работника по ID.
- * ИЗМЕНЕНО: Добавлена проверка прав доступа и удаление из БД.
- * ДОБАВЛЕНО: Проверка авторизации пользователя.
- */
 public class RemoveByIdCommand implements Executable {
 
     private CollectionManager collection;
@@ -20,7 +15,6 @@ public class RemoveByIdCommand implements Executable {
 
     @Override
     public Response execute(String[] args, Worker worker, String username) {
-        // ДОБАВЛЕНО: Проверка авторизации
         if (username == null || username.isEmpty()) {
             return new Response("Ошибка: Пользователь не авторизован!", false);
         }
@@ -40,12 +34,10 @@ public class RemoveByIdCommand implements Executable {
                     return new Response("Worker with id " + id + " doesn't exist", false);
                 }
 
-                // ДОБАВЛЕНО: Проверка прав доступа - пользователь может удалять только свои объекты
                 if (!WorkerDatabaseManager.canUserModifyWorker(id, username)) {
                     return new Response("Ошибка: У вас нет прав на удаление этого объекта!", false);
                 }
 
-                // ИЗМЕНЕНО: Сначала удаляем из БД, затем из коллекции в памяти
                 if (WorkerDatabaseManager.removeWorkerFromDB(id)) {
                     collection.removeById(id);
                     return new Response("Worker with id " + id + " was removed!", true);

@@ -4,10 +4,6 @@ import manager.CollectionManager;
 import models.Worker;
 import network.Response;
 
-/**
- * Команда show для отображения коллекции.
- * ДОБАВЛЕНО: Проверка авторизации пользователя.
- */
 public class ShowCommand implements Executable {
 
     private CollectionManager collection;
@@ -18,7 +14,6 @@ public class ShowCommand implements Executable {
 
     @Override
     public Response execute(String[] args, Worker worker, String username) {
-        // ДОБАВЛЕНО: Проверка авторизации
         if (username == null || username.isEmpty()) {
             return new Response("Ошибка: Пользователь не авторизован!", false);
         }
@@ -29,7 +24,6 @@ public class ShowCommand implements Executable {
         return new Response(collection.getCollectionAsString(), true);
     }
 
-    // Переопределенный метод для обратной совместимости
     @Override
     public Response execute(String[] args, Worker worker) {
         return execute(args, worker, null);

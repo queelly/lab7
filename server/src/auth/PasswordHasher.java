@@ -4,19 +4,10 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 
-/**
- * Класс для хеширования паролей алгоритмом MD5 с солью и перцем.
- * ДОБАВЛЕНО: Новый класс для хеширования паролей согласно заданию (MD5 + соль + перец).
- */
 public class PasswordHasher {
 
-    // ДОБАВЛЕНО: Статический "перец" (общая секретная строка для всех паролей)
-    private static final String PEPPER = "Lab7SecretPepper2024";
+    private static final String PEPPER = "spongebob";
 
-    /**
-     * Генерация случайной соли.
-     * @return соль в виде hex-строки
-     */
     public static String generateSalt() {
         SecureRandom random = new SecureRandom();
         byte[] saltBytes = new byte[16];
@@ -28,13 +19,6 @@ public class PasswordHasher {
         return sb.toString();
     }
 
-    /**
-     * Хеширование пароля алгоритмом MD5 с солью и перцем.
-     * Формула: MD5(Пароль + Соль + Перец)
-     * @param password исходный пароль
-     * @param salt соль пользователя (уникальная для каждого)
-     * @return хеш пароля в виде hex-строки
-     */
     public static String hashPassword(String password, String salt) {
         try {
             String input = password + salt + PEPPER;
@@ -50,12 +34,4 @@ public class PasswordHasher {
         }
     }
 
-    /**
-     * Хеширование пароля без соли (только с перцем) - для обратной совместимости.
-     * @param password исходный пароль
-     * @return хеш пароля в виде hex-строки
-     */
-    public static String hashPassword(String password) {
-        return hashPassword(password, "");
-    }
 }

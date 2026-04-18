@@ -5,10 +5,6 @@ import models.Worker;
 import network.Response;
 import database.WorkerDatabaseManager;
 
-/**
- * Команда remove_head для удаления первого элемента из коллекции.
- * ИЗМЕНЕНО: Добавлена проверка авторизации, работа с БД и проверка прав доступа.
- */
 public class RemoveHeadCommand implements Executable {
 
     private CollectionManager collection;
@@ -19,7 +15,6 @@ public class RemoveHeadCommand implements Executable {
 
     @Override
     public Response execute(String[] args, Worker worker, String username) {
-        // ДОБАВЛЕНО: Проверка авторизации
         if (username == null || username.isEmpty()) {
             return new Response("Ошибка: Пользователь не авторизован!", false);
         }
@@ -35,13 +30,11 @@ public class RemoveHeadCommand implements Executable {
                 if (headWorker == null) {
                     return new Response("Collection is empty!", false);
                 }
-                
-                // ДОБАВЛЕНО: Проверка прав доступа - пользователь может удалять только свои объекты
+
                 if (!WorkerDatabaseManager.canUserModifyWorker(headWorker.getId(), username)) {
                     return new Response("Ошибка: У вас нет прав на удаление этого объекта!", false);
                 }
-                
-                // ИЗМЕНЕНО: Сначала удаляем из БД, затем из коллекции в памяти
+
                 if (WorkerDatabaseManager.removeWorkerFromDB(headWorker.getId())) {
                     collection.removeById(headWorker.getId());
                     return new Response("Removed element:\n" + headWorker, true);
@@ -51,8 +44,7 @@ public class RemoveHeadCommand implements Executable {
             }
         }
     }
-    
-    // Переопределенный метод для обратной совместимости
+
     @Override
     public Response execute(String[] args, Worker worker) {
         return execute(args, worker, null);

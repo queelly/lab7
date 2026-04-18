@@ -5,10 +5,6 @@ import models.Worker;
 import network.Response;
 import database.WorkerDatabaseManager;
 
-/**
- * Команда add_if_min для добавления работника, если он меньше минимального.
- * ИЗМЕНЕНО: Добавлена проверка авторизации и работа с БД.
- */
 public class AddIfMinCommand implements Executable {
 
     CollectionManager collection;
@@ -19,7 +15,6 @@ public class AddIfMinCommand implements Executable {
 
     @Override
     public Response execute(String[] args, Worker worker, String username) {
-        // ДОБАВЛЕНО: Проверка авторизации
         if (username == null || username.isEmpty()) {
             return new Response("Ошибка: Пользователь не авторизован!", false);
         }
@@ -28,7 +23,6 @@ public class AddIfMinCommand implements Executable {
             return new Response("Command does not accept args!", false);
         }
 
-        // ИЗМЕНЕНО: Сначала проверяем условие, затем добавляем в БД
         synchronized (collection.getCollection()) {
             if (collection.getCollectionSize() == 0 || worker.compareTo(collection.getCollection().stream().min(java.util.Comparator.naturalOrder()).get()) < 0) {
                 if (WorkerDatabaseManager.addWorkerToDB(worker, username)) {
@@ -43,7 +37,6 @@ public class AddIfMinCommand implements Executable {
         }
     }
 
-    // Переопределенный метод для обратной совместимости
     @Override
     public Response execute(String[] args, Worker worker) {
         return execute(args, worker, null);

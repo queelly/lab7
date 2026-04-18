@@ -13,7 +13,6 @@ import java.util.Set;
 public class Request implements Serializable {
     private static final long serialVersionUID = 1L;
 
-    // ДОБАВЛЕНО: поля для авторизации пользователя
     private final String username;
     private final String password;
 

@@ -14,16 +14,15 @@ import static java.lang.System.exit;
  */
 public class MainServer {
 
-    private static final int PORT = 11113;
+    private static final int PORT = 9999;
 
     public static void main(String[] args) {
 
-        // ДОБАВЛЕНО: Инициализация таблиц в БД
         WorkerDatabaseManager.initWorkerTable();
         UserManager.initUserTable();
 
-        // ИЗМЕНЕНО: Загрузка коллекции из БД вместо файла
-        CollectionManager collectionManager = WorkerDatabaseManager.loadWorkersFromDB();
+        CollectionManager collectionManager = new CollectionManager();
+        collectionManager.setCollection(WorkerDatabaseManager.loadWorkersFromDB());
         PrinterManager printerManager = new PrinterManager();
         Serializer serializer = new Serializer();
         LoggerManager logger = new LoggerManager(MainServer.class);
@@ -45,8 +44,6 @@ public class MainServer {
                 new HelpCommand(commandManager));
         commandManager.addCommand("info",
                 new InfoCommand(collectionManager));
-        commandManager.addCommand("login",
-                new LoginCommand());
         commandManager.addCommand("print_field_ascending_salary",
                 new PrintFieldAscendingSalaryCommand(collectionManager));
         commandManager.addCommand("remove_by_id",

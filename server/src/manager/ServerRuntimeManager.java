@@ -1,5 +1,7 @@
 package manager;
 
+import auth.UserManager;
+import commands.LoginCommand;
 import network.Request;
 import network.Response;
 import network.Serializer;
@@ -18,20 +20,14 @@ import java.util.Scanner;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/**
- * Класс для управления runtime сервера.
- * ИЗМЕНЕНО: Добавлена многопоточная обработка запросов согласно заданию.
- */
 public class ServerRuntimeManager {
     private final InetSocketAddress address;
     private Selector selector;
     private final CommandManager commandManager;
     private final CollectionManager collectionManager;
     private final Serializer serializer;
-    // ИЗМЕНЕНО: Убран FileManager, так как хранение в БД
     private final LoggerManager logger = new LoggerManager(ServerRuntimeManager.class);
 
-    // ДОБАВЛЕНО: Cached thread pool для обработки запросов согласно заданию
     private final ExecutorService requestProcessorPool = Executors.newCachedThreadPool();
 
     private Boolean isWorking = true;
@@ -81,10 +77,6 @@ public class ServerRuntimeManager {
         }
     }
 
-    /**
-     * ОБРАБОТКА ЗАПРОСА КЛИЕНТА.
-     * ИЗМЕНЕНО: Многопоточное чтение в новом потоке (Thread), обработка в Cached thread pool.
-     */
     private void handleClientRequest(SelectionKey key) {
         SocketChannel client = (SocketChannel) key.channel();
         SessionContext ctx = (SessionContext) key.attachment();
@@ -116,45 +108,59 @@ public class ServerRuntimeManager {
             }
 
             if (ctx.bytesAccumulated < ctx.totalLength) return;
-
             ctx.fileChannel.position(0);
 
-            // ДОБАВЛЕНО: Чтение запроса в НОВОМ ПОТОКЕ (java.lang.Thread) согласно заданию
+            key.interestOps(key.interestOps() & ~SelectionKey.OP_READ);
+
             Thread readThread = new Thread(() -> {
                 Request request;
                 try (InputStream fis = Files.newInputStream(ctx.tempFile);
                      ObjectInputStream ois = new ObjectInputStream(fis)) {
+
                     request = (Request) ois.readObject();
 
-                    // ДОБАВЛЕНО: После чтения - отправка на обработку в Cached thread pool
                     requestProcessorPool.submit(() -> {
                         try {
-                            // ИЗМЕНЕНО: Добавлена передача username для авторизации
-                            Response response = commandManager.executeCommand(
-                                    request.getCommandName(),
-                                    request.getArgs(),
-                                    request.getWorker(),
-                                    request.getUsername()
-                            );
-                            sendResponse(client, response);
-                        } catch (IOException e) {
-                            logger.error("Ошибка при отправке ответа: " + e.getMessage());
-                        } finally {
+                            Response response;
+                            if (!request.getCommandName().trim().equals("login") && !UserManager.authenticateUser(request.getUsername(), request.getPassword())) {
+                                response = new Response(
+                                        "Ошибка аутентификации! Попробуйте войти еще раз!", false);
+                            } else if (request.getCommandName().trim().equals("login") && request.getPassword() == null) {
+                                response = new LoginCommand().execute(request.getArgs(), request.getWorker(), request.getUsername());
+                            } else {
+                                response = commandManager.executeCommand(
+                                        request.getCommandName(),
+                                        request.getArgs(),
+                                        request.getWorker(),
+                                        request.getUsername()
+                                );
+                            }
+                            Thread sendThread = new Thread(() -> {
+                                try {
+                                    sendResponse(client, response);
+                                } catch (IOException e) {
+                                    logger.error("Ошибка при отправке ответа: " + e.getMessage());
+                                } finally {
+                                    // Закрываем соединение после успешной отправки
+                                    ctx.cleanup();
+                                    try { client.close(); key.cancel(); } catch (IOException ignored) {}
+                                }
+                            });
+                            sendThread.start();
+
+                        } catch (Exception e) {
+                            logger.error("Ошибка при исполнении команды: " + e.getMessage());
                             ctx.cleanup();
-                            // Закрываем соединение после обработки запроса
-                            try { client.close(); } catch (IOException ignored) {}
+                            try { client.close(); key.cancel(); } catch (IOException ignored) {}
                         }
                     });
                 } catch (ClassNotFoundException | IOException e) {
                     logger.error("Ошибка при чтении запроса: " + e.getMessage());
                     ctx.cleanup();
-                    try { client.close(); } catch (IOException ignored) {}
+                    try { client.close(); key.cancel(); } catch (IOException ignored) {}
                 }
             });
             readThread.start();
-
-            // Возвращаем управление, чтобы не блокировать selector
-            return;
 
         } catch (IOException e) {
             logger.error("Сбой при передаче: " + e.getMessage());
@@ -162,26 +168,26 @@ public class ServerRuntimeManager {
         }
     }
 
-    /**
-     * ОТПРАВКА ОТВЕТА.
-     * ДОБАВЛЕНО: Отправка ответа в новом потоке (java.lang.Thread) согласно заданию.
-     */
     private void sendResponse(SocketChannel client, Response response) throws IOException {
-        // ДОБАВЛЕНО: Создание нового потока для отправки ответа
-        Thread responseThread = new Thread(() -> {
-            try {
-                byte[] data = serializer.serialize(response);
-                ByteBuffer out = ByteBuffer.allocate(4 + data.length);
-                out.putInt(data.length);
-                out.put(data);
-                out.flip();
-                while (out.hasRemaining()) client.write(out);
-            } catch (IOException e) {
-                logger.error("Ошибка при отправке ответа: " + e.getMessage());
+        byte[] data = serializer.serialize(response);
+        ByteBuffer out = ByteBuffer.allocate(4 + data.length);
+        out.putInt(data.length);
+        out.put(data);
+        out.flip();
+
+        while (out.hasRemaining()) {
+            int bytesWritten = client.write(out);
+            if (bytesWritten == 0) {
+                try {
+                    Thread.sleep(1);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
             }
-        });
-        responseThread.start();
+        }
     }
+
 
     private void acceptClient(SelectionKey key) throws IOException {
         ServerSocketChannel ssc = (ServerSocketChannel) key.channel();
@@ -207,11 +213,8 @@ public class ServerRuntimeManager {
                         isWorking = false;
                         selector.wakeup();
                         requestProcessorPool.shutdown();
-                    } else if ("save".equals(cmd)) {
-                        logger.info("Saving to database (auto-saved)!");
-                        // ИЗМЕНЕНО: Убрано сохранение в файл, данные сохраняются в БД автоматически
                     } else {
-                        logger.info("Incorrect command! Use exit or save!");
+                        logger.info("Incorrect command! Use exit as existing command!");
                     }
                 }
             }
