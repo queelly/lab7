@@ -14,8 +14,13 @@ import java.util.Collection;
 import java.util.Collections;
 
 public class WorkerDatabaseManager {
+    private final DatabaseManager databaseManager;
 
-    public static void initWorkerTable() {
+    public WorkerDatabaseManager(DatabaseManager databaseManager) {
+        this.databaseManager = databaseManager;
+    }
+
+    public void initWorkerTable() {
         String createTableSQL = """
             CREATE TABLE IF NOT EXISTS workers (
                 id INTEGER PRIMARY KEY DEFAULT nextval('workers_id_seq'),
@@ -28,7 +33,8 @@ public class WorkerDatabaseManager {
                 status TEXT NOT NULL,
                 organization_annual_turnover DOUBLE PRECISION,
                 organization_employees_count INTEGER,
-                creator_username TEXT NOT NULL
+                creator_username TEXT NOT NULL,
+                FOREIGN KEY (creator_username) REFERENCES USERS (username)
             )
             """;
 
@@ -41,7 +47,7 @@ public class WorkerDatabaseManager {
             CACHE 1
             """;
 
-        try (Connection conn = DatabaseManager.getConnection();
+        try (Connection conn = databaseManager.getConnection();
              Statement stmt = conn.createStatement()) {
             stmt.execute(createSequenceSQL);
             stmt.execute(createTableSQL);
@@ -50,7 +56,7 @@ public class WorkerDatabaseManager {
         }
     }
 
-    public static boolean addWorkerToDB(Worker worker, String username) {
+    public boolean addWorkerToDB(Worker worker, String username) {
         initWorkerTable();
         String insertSQL = """
             INSERT INTO workers (
@@ -62,7 +68,7 @@ public class WorkerDatabaseManager {
             RETURNING id
             """;
 
-        try (Connection conn = DatabaseManager.getConnection();
+        try (Connection conn = databaseManager.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(insertSQL)) {
 
             pstmt.setString(1, worker.getName());
@@ -110,12 +116,12 @@ public class WorkerDatabaseManager {
         }
     }
 
-    public static Collection<Worker> loadWorkersFromDB() {
+    public Collection<Worker> loadWorkersFromDB() {
         initWorkerTable();
         Collection<Worker> collection = Collections.synchronizedCollection(new ArrayDeque<>());
         String selectSQL = "SELECT * FROM workers ORDER BY id";
 
-        try (Connection conn = DatabaseManager.getConnection();
+        try (Connection conn = databaseManager.getConnection();
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(selectSQL)) {
 
@@ -130,11 +136,11 @@ public class WorkerDatabaseManager {
         return collection;
     }
 
-    public static boolean removeWorkerFromDB(Long id) {
+    public boolean removeWorkerFromDB(Long id) {
         initWorkerTable();
         String deleteSQL = "DELETE FROM workers WHERE id = ?";
 
-        try (Connection conn = DatabaseManager.getConnection();
+        try (Connection conn = databaseManager.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(deleteSQL)) {
             pstmt.setLong(1, id);
             int rowsAffected = pstmt.executeUpdate();
@@ -145,11 +151,11 @@ public class WorkerDatabaseManager {
         }
     }
 
-    public static boolean clearWorkersTable(String username) {
+    public boolean clearWorkersTable(String username) {
         initWorkerTable();
         String deleteSQL = "DELETE FROM workers WHERE creator_username = ?";
 
-        try (Connection conn = DatabaseManager.getConnection();
+        try (Connection conn = databaseManager.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(deleteSQL)) {
             pstmt.setString(1, username);
             pstmt.executeUpdate();
@@ -160,11 +166,11 @@ public class WorkerDatabaseManager {
         }
     }
 
-    public static boolean canUserModifyWorker(Long workerId, String username) {
+    public boolean canUserModifyWorker(Long workerId, String username) {
         initWorkerTable();
         String selectSQL = "SELECT creator_username FROM workers WHERE id = ?";
 
-        try (Connection conn = DatabaseManager.getConnection();
+        try (Connection conn = databaseManager.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(selectSQL)) {
             pstmt.setLong(1, workerId);
             ResultSet rs = pstmt.executeQuery();
@@ -180,7 +186,7 @@ public class WorkerDatabaseManager {
         }
     }
 
-    private static Worker createWorkerFromResultSet(ResultSet rs) throws SQLException {
+    private Worker createWorkerFromResultSet(ResultSet rs) throws SQLException {
         initWorkerTable();
         Long id = (long) rs.getInt("id");
         String name = rs.getString("name");

@@ -1,5 +1,6 @@
 package commands;
 
+import auth.UserManager;
 import manager.CollectionManager;
 import models.Worker;
 import network.Response;
@@ -14,7 +15,8 @@ public class ClearCommand implements Executable {
     }
 
     @Override
-    public Response execute(String[] args, Worker worker, String username) {
+    public Response execute(String[] args, Worker worker, String username, WorkerDatabaseManager workerDatabaseManager,
+                            UserManager userManager) {
         if (username == null || username.isEmpty()) {
             return new Response("Ошибка: Пользователь не авторизован!", false);
         }
@@ -23,18 +25,15 @@ public class ClearCommand implements Executable {
             return new Response("Command does not accept args!", false);
         }
 
-        if (WorkerDatabaseManager.clearWorkersTable(username)) {
-            collection.setCollection(WorkerDatabaseManager.loadWorkersFromDB());
+        if (workerDatabaseManager.clearWorkersTable(username)) {
+            collection.setCollection(workerDatabaseManager.loadWorkersFromDB());
             return new Response("Collection was cleared successfully!", true);
         } else {
             return new Response("Collection was not cleared(", false);
         }
     }
 
-    @Override
-    public Response execute(String[] args, Worker worker) {
-        return execute(args, worker, null);
-    }
+
 
     @Override
     public String toString() {

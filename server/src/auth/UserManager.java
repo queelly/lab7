@@ -1,11 +1,18 @@
 package auth;
 
 import database.DatabaseManager;
+
 import java.sql.*;
 
 public class UserManager {
 
-    public static void initUserTable() {
+    DatabaseManager databaseManager;
+
+    public UserManager(DatabaseManager databaseManager) {
+        this.databaseManager = databaseManager;
+    }
+
+    public void initUserTable() {
         String createTableSQL = """
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
@@ -15,7 +22,7 @@ public class UserManager {
             )
             """;
 
-        try (Connection conn = DatabaseManager.getConnection();
+        try (Connection conn = databaseManager.getConnection();
              Statement stmt = conn.createStatement()) {
             stmt.execute(createTableSQL);
         } catch (SQLException e) {
@@ -23,13 +30,13 @@ public class UserManager {
         }
     }
 
-    public static boolean registerUser(String username, String password) {
+    public boolean registerUser(String username, String password) {
         initUserTable();
         String insertSQL = "INSERT INTO users (username, password_hash, salt) VALUES (?, ?, ?)";
         String salt = PasswordHasher.generateSalt();
         String hashedPassword = PasswordHasher.hashPassword(password, salt);
 
-        try (Connection conn = DatabaseManager.getConnection();
+        try (Connection conn = databaseManager.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(insertSQL)) {
             pstmt.setString(1, username);
             pstmt.setString(2, hashedPassword);
@@ -47,11 +54,11 @@ public class UserManager {
      * @param password пароль пользователя
      * @return true если авторизация успешна, false иначе
      */
-    public static boolean authenticateUser(String username, String password) {
+    public boolean authenticateUser(String username, String password) {
         initUserTable();
         String selectSQL = "SELECT password_hash, salt FROM users WHERE username = ?";
 
-        try (Connection conn = DatabaseManager.getConnection();
+        try (Connection conn = databaseManager.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(selectSQL)) {
             pstmt.setString(1, username);
             ResultSet rs = pstmt.executeQuery();
@@ -69,11 +76,11 @@ public class UserManager {
         }
     }
 
-    public static boolean userExists(String username) {
+    public boolean userExists(String username) {
         initUserTable();
         String selectSQL = "SELECT COUNT(*) FROM users WHERE username = ?";
 
-        try (Connection conn = DatabaseManager.getConnection();
+        try (Connection conn = databaseManager.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(selectSQL)) {
             pstmt.setString(1, username);
             ResultSet rs = pstmt.executeQuery();
@@ -88,11 +95,11 @@ public class UserManager {
         }
     }
 
-    public static Integer getUserIdByUsername(String username) {
+    public Integer getUserIdByUsername(String username) {
         initUserTable();
         String selectSQL = "SELECT id FROM users WHERE username = ?";
 
-        try (Connection conn = DatabaseManager.getConnection();
+        try (Connection conn = databaseManager.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(selectSQL)) {
             pstmt.setString(1, username);
             ResultSet rs = pstmt.executeQuery();

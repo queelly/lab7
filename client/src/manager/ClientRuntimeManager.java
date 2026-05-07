@@ -12,7 +12,7 @@ import java.util.Scanner;
 import static models.builders.RequestBuilder.createRequest;
 
 public class ClientRuntimeManager {
-    private final TCPClient client; // Твой новый неблокирующий клиент
+    private final TCPClient client;
     private final ScannerManager scannerManager = new ScannerManager();
     private final PrinterManager printerManager = new PrinterManager();
     private Boolean isWorking = true;

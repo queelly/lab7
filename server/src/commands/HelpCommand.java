@@ -1,5 +1,7 @@
 package commands;
 
+import auth.UserManager;
+import database.WorkerDatabaseManager;
 import manager.CommandManager;
 import models.Worker;
 import network.Response;
@@ -13,7 +15,8 @@ public class HelpCommand implements Executable {
     }
 
     @Override
-    public Response execute(String[] args, Worker worker, String username) {
+    public Response execute(String[] args, Worker worker, String username, WorkerDatabaseManager workerDatabaseManager,
+                            UserManager userManager) {
         if (username == null || username.isEmpty()) {
             return new Response("Ошибка: Пользователь не авторизован!", false);
         }
@@ -23,6 +26,11 @@ public class HelpCommand implements Executable {
         }
         StringBuilder message = new StringBuilder();
         message.append("Here are all available commands:\n");
+        try {
+            Thread.sleep(5000);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
         commandManager.getCommands().forEach(
                 (commandName, command) ->
                         message.append(commandName + command + "\n")
@@ -30,10 +38,6 @@ public class HelpCommand implements Executable {
         return new Response(message.toString(), true);
     }
 
-    @Override
-    public Response execute(String[] args, Worker worker) {
-        return execute(args, worker, null);
-    }
 
     @Override
     public String toString() {

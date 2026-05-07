@@ -1,5 +1,6 @@
 package commands;
 
+import auth.UserManager;
 import manager.CollectionManager;
 import models.Worker;
 import network.Response;
@@ -14,7 +15,8 @@ public class RemoveByIdCommand implements Executable {
     }
 
     @Override
-    public Response execute(String[] args, Worker worker, String username) {
+    public Response execute(String[] args, Worker worker, String username, WorkerDatabaseManager workerDatabaseManager,
+                            UserManager userManager) {
         if (username == null || username.isEmpty()) {
             return new Response("Ошибка: Пользователь не авторизован!", false);
         }
@@ -34,11 +36,11 @@ public class RemoveByIdCommand implements Executable {
                     return new Response("Worker with id " + id + " doesn't exist", false);
                 }
 
-                if (!WorkerDatabaseManager.canUserModifyWorker(id, username)) {
+                if (!workerDatabaseManager.canUserModifyWorker(id, username)) {
                     return new Response("Ошибка: У вас нет прав на удаление этого объекта!", false);
                 }
 
-                if (WorkerDatabaseManager.removeWorkerFromDB(id)) {
+                if (workerDatabaseManager.removeWorkerFromDB(id)) {
                     collection.removeById(id);
                     return new Response("Worker with id " + id + " was removed!", true);
                 } else {
@@ -50,11 +52,6 @@ public class RemoveByIdCommand implements Executable {
         }
     }
 
-    // Переопределенный метод для обратной совместимости
-    @Override
-    public Response execute(String[] args, Worker worker) {
-        return execute(args, worker, null);
-    }
 
     @Override
     public String toString() {

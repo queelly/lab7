@@ -8,21 +8,19 @@ import java.net.InetSocketAddress;
 
 import static java.lang.System.exit;
 
-/**
- * Главный класс сервера.
- * ИЗМЕНЕНО: Добавлена инициализация БД, убрано хранение в файле.
- */
 public class MainServer {
 
     private static final int PORT = 9999;
 
     public static void main(String[] args) {
-
-        WorkerDatabaseManager.initWorkerTable();
-        UserManager.initUserTable();
+        DatabaseManager databaseManager = new DatabaseManager();
+        WorkerDatabaseManager workerDatabaseManager = new WorkerDatabaseManager(databaseManager);
+        workerDatabaseManager.initWorkerTable();
+        UserManager userManager = new UserManager(databaseManager);
+        userManager.initUserTable();
 
         CollectionManager collectionManager = new CollectionManager();
-        collectionManager.setCollection(WorkerDatabaseManager.loadWorkersFromDB());
+        collectionManager.setCollection(workerDatabaseManager.loadWorkersFromDB());
         PrinterManager printerManager = new PrinterManager();
         Serializer serializer = new Serializer();
         LoggerManager logger = new LoggerManager(MainServer.class);
@@ -55,7 +53,10 @@ public class MainServer {
         ServerRuntimeManager serverRuntimeManager = new ServerRuntimeManager(new InetSocketAddress(PORT),
                 commandManager,
                 collectionManager,
-                serializer
+                serializer,
+                workerDatabaseManager,
+                databaseManager,
+                userManager
         );
         if (serverRuntimeManager.init()) {
             serverRuntimeManager.start();

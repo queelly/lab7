@@ -4,6 +4,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Collection;
 import java.util.Properties;
 
 public class DatabaseManager {
@@ -16,20 +17,19 @@ public class DatabaseManager {
     public static final String DEFAULT_PASSWORD = System.getenv("DB_PASSWORD") != null ?
             System.getenv("DB_PASSWORD") : "";
 
-    private static Connection connection;
+//    private static Connection connection;
 
-    public static Connection getConnection() throws SQLException {
+    public Connection getConnection() throws SQLException {
         return getConnection(DEFAULT_USER, DEFAULT_PASSWORD);
     }
 
-    public static Connection getConnection(String username, String password) throws SQLException {
-        if (connection == null || connection.isClosed()) {
-            Properties props = new Properties();
-            props.setProperty("user", username);
-            props.setProperty("password", password);
-            connection = DriverManager.getConnection(DB_URL, props);
-            connection.setAutoCommit(true);
-        }
+    private static Connection getConnection(String username, String password) throws SQLException {
+        Connection connection;
+        Properties props = new Properties();
+        props.setProperty("user", username);
+        props.setProperty("password", password);
+        connection = DriverManager.getConnection(DB_URL, props);
+        connection.setAutoCommit(true);
         return connection;
     }
 }

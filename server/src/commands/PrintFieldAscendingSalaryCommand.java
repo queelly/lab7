@@ -1,5 +1,8 @@
 package commands;
 
+import auth.UserManager;
+import database.DatabaseManager;
+import database.WorkerDatabaseManager;
 import manager.CollectionManager;
 import models.Worker;
 import network.Response;
@@ -15,7 +18,8 @@ public class PrintFieldAscendingSalaryCommand implements Executable {
     }
 
     @Override
-    public Response execute(String[] args, Worker worker, String username) {
+    public Response execute(String[] args, Worker worker, String username, WorkerDatabaseManager workerDatabaseManager,
+                            UserManager userManager) {
         if (username == null || username.isEmpty()) {
             return new Response("Ошибка: Пользователь не авторизован!", false);
         }
@@ -34,11 +38,6 @@ public class PrintFieldAscendingSalaryCommand implements Executable {
             }
             return new Response(message.toString(), true);
         }
-    }
-
-    @Override
-    public Response execute(String[] args, Worker worker) {
-        return execute(args, worker, null);
     }
 
     @Override

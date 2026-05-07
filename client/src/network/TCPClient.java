@@ -120,7 +120,7 @@ public class TCPClient {
             if (read == -1) throw new IOException("Сервер закрыл соединение");
 
             if (read == 0) {
-                if (System.currentTimeMillis() - start > 10000) throw new IOException("Таймаут чтения ответа");
+                if (System.currentTimeMillis() - start > 20000) throw new IOException("Таймаут чтения ответа");
                 try { Thread.sleep(10); } catch (InterruptedException ignored) {}
             }
         }

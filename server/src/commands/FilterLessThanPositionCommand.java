@@ -1,5 +1,7 @@
 package commands;
 
+import auth.UserManager;
+import database.WorkerDatabaseManager;
 import manager.CollectionManager;
 import models.Position;
 import models.Worker;
@@ -17,7 +19,8 @@ public class FilterLessThanPositionCommand implements Executable {
     }
 
     @Override
-    public Response execute(String[] args, Worker worker, String username) {
+    public Response execute(String[] args, Worker worker, String username, WorkerDatabaseManager workerDatabaseManager,
+                            UserManager userManager) {
         if (username == null || username.isEmpty()) {
             return new Response("Ошибка: Пользователь не авторизован!", false);
         }
@@ -44,11 +47,6 @@ public class FilterLessThanPositionCommand implements Executable {
         } else {
             return new Response("Filtered result:\n", filteredWorkers, true);
         }
-    }
-
-    @Override
-    public Response execute(String[] args, Worker worker) {
-        return execute(args, worker, null);
     }
 
     @Override

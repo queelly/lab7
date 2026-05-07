@@ -1,5 +1,6 @@
 package commands;
 
+import auth.UserManager;
 import manager.CollectionManager;
 import models.Worker;
 import network.Response;
@@ -14,7 +15,8 @@ public class RemoveHeadCommand implements Executable {
     }
 
     @Override
-    public Response execute(String[] args, Worker worker, String username) {
+    public Response execute(String[] args, Worker worker, String username, WorkerDatabaseManager workerDatabaseManager,
+                            UserManager userManager) {
         if (username == null || username.isEmpty()) {
             return new Response("Ошибка: Пользователь не авторизован!", false);
         }
@@ -31,11 +33,11 @@ public class RemoveHeadCommand implements Executable {
                     return new Response("Collection is empty!", false);
                 }
 
-                if (!WorkerDatabaseManager.canUserModifyWorker(headWorker.getId(), username)) {
+                if (!workerDatabaseManager.canUserModifyWorker(headWorker.getId(), username)) {
                     return new Response("Ошибка: У вас нет прав на удаление этого объекта!", false);
                 }
 
-                if (WorkerDatabaseManager.removeWorkerFromDB(headWorker.getId())) {
+                if (workerDatabaseManager.removeWorkerFromDB(headWorker.getId())) {
                     collection.removeById(headWorker.getId());
                     return new Response("Removed element:\n" + headWorker, true);
                 } else {
@@ -43,11 +45,6 @@ public class RemoveHeadCommand implements Executable {
                 }
             }
         }
-    }
-
-    @Override
-    public Response execute(String[] args, Worker worker) {
-        return execute(args, worker, null);
     }
 
     @Override

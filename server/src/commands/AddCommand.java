@@ -1,5 +1,6 @@
 package commands;
 
+import auth.UserManager;
 import manager.CollectionManager;
 import models.Worker;
 import network.Response;
@@ -14,7 +15,8 @@ public class AddCommand implements Executable {
     }
 
     @Override
-    public Response execute(String[] args, Worker worker, String username) {
+    public Response execute(String[] args, Worker worker, String username, WorkerDatabaseManager workerDatabaseManager,
+                            UserManager userManager) {
         if (username == null || username.isEmpty()) {
             return new Response("Ошибка: Пользователь не авторизован!", false);
         }
@@ -23,17 +25,12 @@ public class AddCommand implements Executable {
             return new Response("Command does not accept args!", false);
         }
 
-        if (WorkerDatabaseManager.addWorkerToDB(worker, username)) {
+        if (workerDatabaseManager.addWorkerToDB(worker, username)) {
             collection.addWithoutIdGeneration(worker);
             return new Response("New worker was added successfully!", true);
         } else {
             return new Response("New worker was not added(", false);
         }
-    }
-
-    @Override
-    public Response execute(String[] args, Worker worker) {
-        return execute(args, worker, null);
     }
 
     @Override

@@ -2,18 +2,17 @@ package manager;
 
 import auth.UserManager;
 import commands.LoginCommand;
+import database.DatabaseManager;
+import database.WorkerDatabaseManager;
 import network.Request;
 import network.Response;
 import network.Serializer;
-import manager.LoggerManager;
-import manager.CollectionManager;
-import manager.CommandManager;
 
 import java.io.*;
-        import java.net.InetSocketAddress;
+import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
-        import java.nio.file.Files;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Iterator;
 import java.util.Scanner;
@@ -27,19 +26,27 @@ public class ServerRuntimeManager {
     private final CollectionManager collectionManager;
     private final Serializer serializer;
     private final LoggerManager logger = new LoggerManager(ServerRuntimeManager.class);
+    private final WorkerDatabaseManager workerDatabaseManager;
+    private final DatabaseManager databaseManager;
+    private final UserManager userManager;
 
     private final ExecutorService requestProcessorPool = Executors.newCachedThreadPool();
-
     private Boolean isWorking = true;
 
     public ServerRuntimeManager(InetSocketAddress address,
                                 CommandManager commandManager,
                                 CollectionManager collectionManager,
-                                Serializer serializer) {
+                                Serializer serializer,
+                                WorkerDatabaseManager workerDatabaseManager,
+                                DatabaseManager databaseManager,
+                                UserManager userManager) {
         this.address = address;
         this.commandManager = commandManager;
         this.collectionManager = collectionManager;
         this.serializer = serializer;
+        this.databaseManager = databaseManager;
+        this.workerDatabaseManager = workerDatabaseManager;
+        this.userManager = userManager;
     }
 
     public boolean init() {
@@ -77,14 +84,33 @@ public class ServerRuntimeManager {
         }
     }
 
+    private void acceptClient(SelectionKey key) throws IOException {
+        ServerSocketChannel ssc = (ServerSocketChannel) key.channel();
+        SocketChannel client = ssc.accept();
+        client.configureBlocking(false);
+        client.register(selector, SelectionKey.OP_READ, new SessionContext());
+    }
+
     private void handleClientRequest(SelectionKey key) {
         SocketChannel client = (SocketChannel) key.channel();
         SessionContext ctx = (SessionContext) key.attachment();
 
+        key.interestOps(key.interestOps() & ~SelectionKey.OP_READ);
+
+        Thread readThread = new Thread(() -> readDataAndProcess(key, client, ctx));
+        readThread.start();
+    }
+
+    private void readDataAndProcess(SelectionKey key, SocketChannel client, SessionContext ctx) {
         try {
             if (!ctx.headerRead) {
-                if (client.read(ctx.headerBuffer) == -1) { closeClient(key); return; }
-                if (ctx.headerBuffer.hasRemaining()) return;
+                int read = client.read(ctx.headerBuffer);
+                if (read == -1) { closeConnection(key); return; }
+
+                if (ctx.headerBuffer.hasRemaining()) {
+                    resumeReading(key);
+                    return;
+                }
 
                 ctx.headerBuffer.flip();
                 ctx.totalLength = ctx.headerBuffer.getInt();
@@ -94,12 +120,12 @@ public class ServerRuntimeManager {
                         java.nio.file.StandardOpenOption.WRITE,
                         java.nio.file.StandardOpenOption.READ);
                 ctx.headerRead = true;
-                logger.info("Reading object.");
+                logger.info("Чтение объекта размером: " + ctx.totalLength + " байт во временный файл.");
             }
 
             ByteBuffer buffer = ByteBuffer.allocate(65536);
             int read = client.read(buffer);
-            if (read == -1) { closeClient(key); return; }
+            if (read == -1) { closeConnection(key); return; }
 
             if (read > 0) {
                 buffer.flip();
@@ -107,99 +133,104 @@ public class ServerRuntimeManager {
                 ctx.bytesAccumulated += read;
             }
 
-            if (ctx.bytesAccumulated < ctx.totalLength) return;
+            if (ctx.bytesAccumulated < ctx.totalLength) {
+                resumeReading(key);
+                return;
+            }
+
             ctx.fileChannel.position(0);
+            Request request = deserializeRequest(ctx);
 
-            key.interestOps(key.interestOps() & ~SelectionKey.OP_READ);
+            requestProcessorPool.submit(() -> processRequest(key, client, request));
 
-            Thread readThread = new Thread(() -> {
-                Request request;
-                try (InputStream fis = Files.newInputStream(ctx.tempFile);
-                     ObjectInputStream ois = new ObjectInputStream(fis)) {
-
-                    request = (Request) ois.readObject();
-
-                    requestProcessorPool.submit(() -> {
-                        try {
-                            Response response;
-                            if (!request.getCommandName().trim().equals("login") && !UserManager.authenticateUser(request.getUsername(), request.getPassword())) {
-                                response = new Response(
-                                        "Ошибка аутентификации! Попробуйте войти еще раз!", false);
-                            } else if (request.getCommandName().trim().equals("login") && request.getPassword() == null) {
-                                response = new LoginCommand().execute(request.getArgs(), request.getWorker(), request.getUsername());
-                            } else {
-                                response = commandManager.executeCommand(
-                                        request.getCommandName(),
-                                        request.getArgs(),
-                                        request.getWorker(),
-                                        request.getUsername()
-                                );
-                            }
-                            Thread sendThread = new Thread(() -> {
-                                try {
-                                    sendResponse(client, response);
-                                } catch (IOException e) {
-                                    logger.error("Ошибка при отправке ответа: " + e.getMessage());
-                                } finally {
-                                    // Закрываем соединение после успешной отправки
-                                    ctx.cleanup();
-                                    try { client.close(); key.cancel(); } catch (IOException ignored) {}
-                                }
-                            });
-                            sendThread.start();
-
-                        } catch (Exception e) {
-                            logger.error("Ошибка при исполнении команды: " + e.getMessage());
-                            ctx.cleanup();
-                            try { client.close(); key.cancel(); } catch (IOException ignored) {}
-                        }
-                    });
-                } catch (ClassNotFoundException | IOException e) {
-                    logger.error("Ошибка при чтении запроса: " + e.getMessage());
-                    ctx.cleanup();
-                    try { client.close(); key.cancel(); } catch (IOException ignored) {}
-                }
-            });
-            readThread.start();
-
-        } catch (IOException e) {
-            logger.error("Сбой при передаче: " + e.getMessage());
-            closeClient(key);
+        } catch (IOException | ClassNotFoundException e) {
+            logger.error("Сбой при передаче или десериализации: " + e.getMessage());
+            closeConnection(key);
         }
     }
 
-    private void sendResponse(SocketChannel client, Response response) throws IOException {
-        byte[] data = serializer.serialize(response);
-        ByteBuffer out = ByteBuffer.allocate(4 + data.length);
-        out.putInt(data.length);
-        out.put(data);
-        out.flip();
+    private Request deserializeRequest(SessionContext ctx) throws IOException, ClassNotFoundException {
+        try (InputStream fis = Files.newInputStream(ctx.tempFile);
+             ObjectInputStream ois = new ObjectInputStream(fis)) {
+            return (Request) ois.readObject();
+        }
+    }
 
-        while (out.hasRemaining()) {
-            int bytesWritten = client.write(out);
-            if (bytesWritten == 0) {
-                try {
-                    Thread.sleep(1);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
+    private void processRequest(SelectionKey key, SocketChannel client, Request request) {
+        try {
+            Response response = executeCommandLogic(request);
+
+            Thread sendThread = new Thread(() -> sendResponse(key, client, response));
+            sendThread.start();
+        } catch (Exception e) {
+            logger.error("Ошибка при исполнении команды: " + e.getMessage());
+            closeConnection(key);
+        }
+    }
+
+    private Response executeCommandLogic(Request request) {
+        String commandName = request.getCommandName().trim();
+        boolean isAuthenticated = userManager.authenticateUser(request.getUsername(), request.getPassword());
+
+        if (!commandName.equals("login") && !isAuthenticated) {
+            return new Response("Ошибка аутентификации! Попробуйте войти еще раз!", false);
+        }
+
+        if (commandName.equals("login") && request.getPassword() == null) {
+            return new LoginCommand().execute(request.getArgs(), request.getWorker(), request.getUsername(),
+                    workerDatabaseManager, userManager);
+        }
+
+        return commandManager.executeCommand(
+                commandName,
+                request.getArgs(),
+                request.getWorker(),
+                request.getUsername(),
+                workerDatabaseManager,
+                userManager
+        );
+    }
+
+    private void sendResponse(SelectionKey key, SocketChannel client, Response response) {
+        try {
+            byte[] data = serializer.serialize(response);
+            ByteBuffer out = ByteBuffer.allocate(4 + data.length);
+            out.putInt(data.length);
+            out.put(data);
+            out.flip();
+
+            while (out.hasRemaining()) {
+                int bytesWritten = client.write(out);
+                if (bytesWritten == 0) {
+                    try {
+                        Thread.sleep(1);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
                 }
             }
+        } catch (IOException e) {
+            logger.error("Ошибка при отправке ответа: " + e.getMessage());
+        } finally {
+            closeConnection(key);
         }
     }
 
-
-    private void acceptClient(SelectionKey key) throws IOException {
-        ServerSocketChannel ssc = (ServerSocketChannel) key.channel();
-        SocketChannel client = ssc.accept();
-        client.configureBlocking(false);
-        client.register(selector, SelectionKey.OP_READ, new SessionContext());
+    private void resumeReading(SelectionKey key) {
+        if (key.isValid()) {
+            key.interestOps(key.interestOps() | SelectionKey.OP_READ);
+            selector.wakeup();
+        }
     }
 
-    private void closeClient(SelectionKey key) {
+    private void closeConnection(SelectionKey key) {
         SessionContext ctx = (SessionContext) key.attachment();
         if (ctx != null) ctx.cleanup();
-        try { key.channel().close(); key.cancel(); } catch (IOException ignored) {}
+        try {
+            key.channel().close();
+            key.cancel();
+        } catch (IOException ignored) {}
     }
 
     private void startConsoleThread() {

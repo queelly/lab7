@@ -1,5 +1,6 @@
 package commands;
 
+import auth.UserManager;
 import manager.CollectionManager;
 import models.Worker;
 import network.Response;
@@ -14,7 +15,8 @@ public class AddIfMinCommand implements Executable {
     }
 
     @Override
-    public Response execute(String[] args, Worker worker, String username) {
+    public Response execute(String[] args, Worker worker, String username, WorkerDatabaseManager workerDatabaseManager,
+                            UserManager userManager) {
         if (username == null || username.isEmpty()) {
             return new Response("Ошибка: Пользователь не авторизован!", false);
         }
@@ -24,8 +26,10 @@ public class AddIfMinCommand implements Executable {
         }
 
         synchronized (collection.getCollection()) {
-            if (collection.getCollectionSize() == 0 || worker.compareTo(collection.getCollection().stream().min(java.util.Comparator.naturalOrder()).get()) < 0) {
-                if (WorkerDatabaseManager.addWorkerToDB(worker, username)) {
+            if (collection.getCollectionSize() == 0 ||
+                    worker.compareTo(collection.getCollection().stream().
+                            min(java.util.Comparator.naturalOrder()).get()) < 0) {
+                if (workerDatabaseManager.addWorkerToDB(worker, username)) {
                     collection.addWithoutIdGeneration(worker);
                     return new Response("New worker was added successfully!", true);
                 } else {
@@ -36,12 +40,6 @@ public class AddIfMinCommand implements Executable {
             }
         }
     }
-
-    @Override
-    public Response execute(String[] args, Worker worker) {
-        return execute(args, worker, null);
-    }
-
     @Override
     public String toString() {
         return ": add new Worker to Collection " +
